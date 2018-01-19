@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+#############
+### SHARD ###
+#############
+
+mkdir -p shard-a-0
+mkdir -p shard-a-1
+mkdir -p shard-b-0
+mkdir -p shard-b-1
+
+#shard-a
+mongod --shardsvr --replSet shard-a --dbpath shard-a-0 --logpath shard-a-0.log --port 27300 --fork --logappend --smallfiles --oplogSize 50
+mongod --shardsvr --replSet shard-a --dbpath shard-a-1 --logpath shard-a-1.log --port 27301 --fork --logappend --smallfiles --oplogSize 50
+
+#shard-b
+mongod --shardsvr --replSet shard-b --dbpath shard-b-0 --logpath shard-b-0.log --port 27310 --fork --logappend --smallfiles --oplogSize 50
+mongod --shardsvr --replSet shard-b --dbpath shard-b-1 --logpath shard-b-1.log --port 27311 --fork --logappend --smallfiles --oplogSize 50
+
+echo 'rs.initiate({ _id : "shard-a", members: [ { _id : 0, host : "localhost:27300" }, { _id : 1, host : "localhost:27301" } ]})' | mongo --port 27300
+echo 'rs.initiate({ _id : "shard-b", members: [ { _id : 0, host : "localhost:27310" }, { _id : 1, host : "localhost:27311" } ]})' | mongo --port 27310
+
+##############
+### CONFIG ###
+##############
+
+mkdir config-0
+mkdir config-1
+mkdir config-2
+
+#config servers
+mongod --configsvr --replSet config-a --port 27200 --logpath config-0.log --logappend --dbpath config-0 --fork
+mongod --configsvr --replSet config-a --port 27201 --logpath config-1.log --logappend --dbpath config-1 --fork
+mongod --configsvr --replSet config-a --port 27202 --logpath config-2.log --logappend --dbpath config-2 --fork
+
+echo 'rs.initiate({ _id: "config-a", configsvr: true, members: [{ _id : 0, host : "localhost:27200" }, { _id : 1, host : "localhost:27201" }, { _id : 2, host : "localhost:27202" }] })' | mongo --port 27200
+
+##############
+### ROUTER ###
+##############
+
+mongos --configdb config-a/localhost:27200,localhost:27201,localhost:27202 --fork --logappend --logpath router-0.log --port 27100
+printf 'sh.addShard("shard-a/localhost:27300") \n sh.addShard("shard-b/localhost:27310")' | mongo --port 27100
+
+printf 'use shardTest \n db.users.createIndex({ "guid": "hashed" }, { unique: true })' | mongo --port 27100
+printf 'sh.enableSharding("shardTest")' | mongo --port 27100
+printf 'sh.shardCollection("shardTest.users", { "guid" : "hashed" })' | mongo --port 27100
+
+mongoimport --port 27100 --db shardTest --collection users --file users.json --jsonArray
+
+printf 'use shardTest \n db.users.getShardDistribution()' | mongo --port 27100

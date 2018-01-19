@@ -1,0 +1,12 @@
+#!/bin/bash
+printf "pkill -f mongo && rm -r shard-* ... (y/n)?" 
+read -sn1 input
+echo
+if [ $input != "y" ]; then exit 1; fi
+
+pkill -f mongo
+sleep 2
+
+rm -r ./shard-* 2>/dev/null
+rm -r ./config-* 2>/dev/null
+rm -r ./router-* 2>/dev/null
