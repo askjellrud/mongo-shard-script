@@ -1,2 +1,2 @@
-# About this Repo
-Simple MongoDB sharding script in bash
+# Mongo Shard Script
+Simple script for testing MongoDB sharding
